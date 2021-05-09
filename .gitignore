@@ -1,0 +1,9 @@
+node_modules/
+dist/
+FramesCompressed/
+ResizedFrames/
+
+.env
+
+*.mp4
+!bad_apple.mp4
