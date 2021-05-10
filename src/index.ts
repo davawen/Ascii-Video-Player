@@ -7,7 +7,12 @@ import { spawn, ChildProcessWithoutNullStreams } from 'child_process';
 import * as prompt from 'prompt';
 import * as draftlog from 'draftlog';
 
-import * as Player from 'player';
+import * as playSound from 'play-sound';
+const audioPlayer = playSound(
+	{
+		player: "C:/PATH/mplayer/mplayer.exe"
+	}
+);
 
 draftlog.into(console).addLineListener(process.stdin);
 
@@ -27,7 +32,7 @@ async function sleep(time: number)
 
 async function extractFrames(canvas: Canvas, ffmpegProcess: ChildProcessWithoutNullStreams)
 {
-	let shading = "$@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\\|()1{}[]?-_+~<>i!lI;:,\" ^`'. ".split("");
+	let shading = " .'`^ \",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$".split("");
 	
 	for(let i = 0; i < 10; i++) //Process ten frames at a time
 	{
@@ -74,7 +79,7 @@ prompt.get(
 			name: "videoPath",
 			description: "Path to the video file",
 			allowEmpty: false,
-			pattern: /[a-zA-Z0-9]+\.(mp4)|(webm)|(mpg)|(mpeg)|(m4v)|(avi)|(mov)|(qt)|(flv)|(ogg)|(wmv)/
+			pattern: /.+\.((mp4)|(webm)|(mpg)|(mpeg)|(m4v)|(avi)|(mov)|(qt)|(flv)|(ogg)|(wmv))/
 		},
 		{
 			name: "width",
@@ -97,11 +102,13 @@ prompt.get(
 		
 		if(err) return -1;
 		
-		let videoPath = result["videoPath"] as string;
-		let splitPath = videoPath.split(/\/|\\/);
-		let video = splitPath[splitPath.length-1];
+		const videoPath = result["videoPath"] as string;
+		const splitPath = videoPath.split(/\/|\\/);
+		const video = splitPath[splitPath.length-1];
 		
-		let videoWidth = result["width"];
+		const videoWidth = result["width"];
+		
+		const isPlayingAudio = /[yY]/.test(result["audio"] as string);
 		
 		let ffmpegFps = spawn('ffmpeg', ['-i', videoPath]);
 		let fpsString = '';
@@ -132,7 +139,9 @@ prompt.get(
 				
 				//Reduce aspect ration by 2
 				let ffmpeg = spawn('ffmpeg', ['-i', videoPath, '-vf', `scale=${videoWidth}:(((${videoWidth}/iw)/2))*ih`, `${__dirname}/ResizedFrames/out-%d.png`]);
-
+				
+				process.stdout.write("\u001b[2J\u001b[0;0H"); //Clear terminal
+				
 				await sleep(1000); //Wait for ffmpeg to warm up
 				
 				let canvas: Canvas = 
@@ -144,20 +153,28 @@ prompt.get(
 				
 				extractFrames(canvas, ffmpeg);
 				
-				spawn('powershell', ['clear']);
 				
 				console.log(`Playing ${video} !`);
 				
 				await sleep(1000); //Wait for processing to warm up
 				
 				let currentFrame = console.draft(canvas.frames[0]);
+				let newFrame = canvas.frames[0];
 				
 				// Play audio
-				let player = new Player(`${__dirname}/ResizedFrames/$audio.mp3`)
-				player.play(() => {});
+				if(isPlayingAudio) audioPlayer.play(`${__dirname}/ResizedFrames/$audio.mp3`,
+					(err: Error) => 
+					{
+						process.stdout.write("\u001b[2J\u001b[0;0H")
+						
+						process.exit(0);
+					}
+				);
 				
 				let index = 0;
 				let start = Date.now();
+				
+				const updateDelay = 1000 / fps;
 				
 				while(!canvas.finished || index < canvas.index)
 				{
@@ -165,13 +182,13 @@ prompt.get(
 					
 					if(frame == undefined)
 					{
-						await sleep(1000 / fps);
+						await sleep(updateDelay);
 						continue;
 					}
 					
 					currentFrame(frame);
 					
-					index = (Date.now() - start) / (1000 / fps);
+					index = (Date.now() - start) / updateDelay;
 				}
 			}
 		);
