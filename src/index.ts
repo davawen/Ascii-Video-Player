@@ -32,7 +32,7 @@ async function sleep(time: number)
 
 async function extractFrames(canvas: Canvas, ffmpegProcess: ChildProcessWithoutNullStreams)
 {
-	let shading = " .'`^ \",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$".split("");
+	let shading = " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$".split("");
 	
 	for(let i = 0; i < 10; i++) //Process ten frames at a time
 	{
@@ -56,11 +56,9 @@ async function extractFrames(canvas: Canvas, ffmpegProcess: ChildProcessWithoutN
 
 		for(let j = 0; j < pixelData.data.length; j += 4)
 		{
-			// 0.0039 is 1/255
-			let value = (.3 * pixelData.data[j] + .59 * pixelData.data[j + 1] + .11 * pixelData.data[j + 2]) * 0.0039 * (pixelData.data[j + 3] * 0.0039); // Get greyscale value then multiply everything by alpha
+			let value = (.3 * pixelData.data[j] + .59 * pixelData.data[j + 1] + .11 * pixelData.data[j + 2]) / 256 * (pixelData.data[j + 3] / 255); // Get greyscale value then multiply everything by alpha
 			
-			
-			str += shading[ Math.floor(value * (shading.length-1)) ];
+			str += shading[Math.floor(value * shading.length)]; // 0 <= value < 1, so this works
 			
 			if(Math.floor(j/4) % pixelData.width == pixelData.width-1) str += "\n";
 		}
@@ -178,7 +176,9 @@ prompt.get(
 				
 				while(!canvas.finished || index < canvas.index)
 				{
-					let frame = canvas.frames[Math.floor(index)];
+					let frameIndex = Math.floor(index)
+					
+					let frame = canvas.frames[frameIndex];
 					
 					if(frame == undefined)
 					{
@@ -186,7 +186,9 @@ prompt.get(
 						continue;
 					}
 					
-					currentFrame(frame);
+					canvas.frames[frameIndex] = ""; // Reduce memory usage
+					
+					currentFrame("\n" + frame);
 					
 					index = (Date.now() - start) / updateDelay;
 				}
