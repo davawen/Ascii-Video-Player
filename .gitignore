@@ -5,5 +5,4 @@ ResizedFrames/
 
 .env
 
-*.mp4
-!bad_apple.mp4
+videos/

@@ -8,11 +8,6 @@ import * as prompt from 'prompt';
 import * as draftlog from 'draftlog';
 
 import * as playSound from 'play-sound';
-const audioPlayer = playSound(
-	{
-		player: "C:/PATH/mplayer/mplayer.exe"
-	}
-);
 
 draftlog.into(console).addLineListener(process.stdin);
 
@@ -25,6 +20,54 @@ interface Canvas
 	finished: boolean;
 }
 
+interface Config
+{
+	ffmpegPath: string;
+	mplayerPath: string;
+}
+
+//#region Load config
+
+let config: Config =
+{
+	ffmpegPath: "",
+	mplayerPath: ""
+};
+
+if(fs.existsSync("./config.json"))
+{
+	config = JSON.parse(fs.readFileSync("./config.json", { encoding: "ascii" }));
+}
+
+//If empty, assume it's in the PATH
+if(config.ffmpegPath === "") config.ffmpegPath = "ffmpeg";
+else
+{
+	if(!fs.existsSync(config.ffmpegPath))
+	{
+		console.log("Error: Path to ffmpeg doesn't exists!"); //Note this doesn't give confirmation that the path is right
+		process.exit(1);
+	}
+}
+
+if(config.mplayerPath === "") config.mplayerPath = "mplayer";
+else
+{
+	if(!fs.existsSync(config.mplayerPath))
+	{
+		console.log("Error: Path to mplayer doesn't exists!");
+		process.exit(1);
+	}
+}
+
+const audioPlayer = playSound(
+	{
+		player: config.mplayerPath
+	}
+);
+
+//#endregion
+
 async function sleep(time: number)
 {
 	return new Promise(resolve => setTimeout(resolve, time));
@@ -32,7 +75,7 @@ async function sleep(time: number)
 
 async function extractFrames(canvas: Canvas, ffmpegProcess: ChildProcessWithoutNullStreams)
 {
-	let shading = " .'`^\",:;Il!i><~+_-?][}{1)(|\\/tfjrxnuvczXYUJCLQ0OZmwqpdbkhao*#MW&8%B@$".split("");
+	let shading = " .:-=+*#%@".split("");
 	
 	for(let i = 0; i < 10; i++) //Process ten frames at a time
 	{
@@ -77,7 +120,7 @@ prompt.get(
 			name: "videoPath",
 			description: "Path to the video file",
 			allowEmpty: false,
-			pattern: /.+\.((mp4)|(webm)|(mpg)|(mpeg)|(m4v)|(avi)|(mov)|(qt)|(flv)|(ogg)|(wmv))/
+			pattern: /.+\.((mp4)|(webm)|(mpg)|(mpeg)|(m4v)|(avi)|(mov)|(qt)|(flv)|(ogg)|(wmv)|(mkv))/
 		},
 		{
 			name: "width",
@@ -101,6 +144,13 @@ prompt.get(
 		if(err) return -1;
 		
 		const videoPath = result["videoPath"] as string;
+		
+		if(!fs.existsSync(videoPath))
+		{
+			console.log("Error: Video doesn't exists!");
+			process.exit(1);
+		}
+		
 		const splitPath = videoPath.split(/\/|\\/);
 		const video = splitPath[splitPath.length-1];
 		
@@ -131,12 +181,12 @@ prompt.get(
 				await new Promise(
 					(resolve, reject) =>
 					{
-						spawn('ffmpeg', ['-i', videoPath, `${__dirname}/ResizedFrames/$audio.mp3`]).on('close', resolve);
+						spawn('ffmpeg', ['-i', videoPath, `${__dirname}/ResizedFrames/audio.mp3`]).on('close', resolve);
 					}
 				);
 				
-				//Reduce aspect ration by 2
-				let ffmpeg = spawn('ffmpeg', ['-i', videoPath, '-vf', `scale=${videoWidth}:(((${videoWidth}/iw)/2))*ih`, `${__dirname}/ResizedFrames/out-%d.png`]);
+				//Reduce aspect ratio by 2
+				let ffmpeg = spawn(config.ffmpegPath, ['-i', videoPath, '-vf', `scale=${videoWidth}:(((${videoWidth}/iw)/2))*ih`, `${__dirname}/ResizedFrames/out-%d.png`]);
 				
 				process.stdout.write("\u001b[2J\u001b[0;0H"); //Clear terminal
 				
@@ -154,17 +204,17 @@ prompt.get(
 				
 				console.log(`Playing ${video} !`);
 				
-				await sleep(1000); //Wait for processing to warm up
+				await sleep(2000); //Wait for processing to warm up
 				
 				let currentFrame = console.draft(canvas.frames[0]);
 				let newFrame = canvas.frames[0];
 				
 				// Play audio
-				if(isPlayingAudio) audioPlayer.play(`${__dirname}/ResizedFrames/$audio.mp3`,
+				if(isPlayingAudio) audioPlayer.play(`${__dirname}/ResizedFrames/audio.mp3`,
 					(err: Error) => 
 					{
-						process.stdout.write("\u001b[2J\u001b[0;0H")
-						
+						process.stdout.write("\u001b[2J\u001b[0;0H");
+
 						process.exit(0);
 					}
 				);
