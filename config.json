@@ -1,4 +1,4 @@
 {
-	"ffmpegPath": "C:/PATH/ffmpeg/bin/ffmpeg.exe",
-	"mplayerPath": "C:/PATH/mplayer/mplayer.exe"
+	"ffmpegPath": "LINK/TO/ffmpeg.exe",
+	"mplayerPath": "LINK/TO/mplayer.exe"
 }
