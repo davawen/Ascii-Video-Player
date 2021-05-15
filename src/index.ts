@@ -101,7 +101,7 @@ async function extractFrames(canvas: Canvas, ffmpegProcess: ChildProcessWithoutN
 		{
 			let value = (.3 * pixelData.data[j] + .59 * pixelData.data[j + 1] + .11 * pixelData.data[j + 2]) / 256 * (pixelData.data[j + 3] / 255); // Get greyscale value then multiply everything by alpha
 			
-			str += shading[Math.floor(value * shading.length)]; // 0 <= value < 1, so this works
+			str += shading[Math.floor(value * value * shading.length)];
 			
 			if(Math.floor(j/4) % pixelData.width == pixelData.width-1) str += "\n";
 		}
