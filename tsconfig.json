@@ -4,6 +4,7 @@
 		"moduleResolution": "node",
 		"target": "ES5",
 		"rootDir": "./src",
-		"outDir": "./dist"
+		"outDir": "./dist",
+		"allowSyntheticDefaultImports": true
 	}
 }
