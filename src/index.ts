@@ -21,7 +21,6 @@ DraftLog.into(console).addLineListener(process.stdin);
 //#endregion
 
 type PixelData = { data: Uint8Array, width: number, height: number; };
-let shading = " .:-=+*#%@".split("");
 
 class Canvas
 {
@@ -30,13 +29,16 @@ class Canvas
 	index: number;
 	frameIndex: number;
 	finished: boolean;
+	chars: string[];
 	
-	constructor()
+	constructor(chars: string[])
 	{
 		this.frameIndex = 0;
 		this.index = 0;
 		this.frames = [];
 		this.finished = false;
+		
+		this.chars = chars;
 	}
 	
 	popFrame(): string
@@ -74,7 +76,7 @@ class Canvas
 			{
 				let value = (.3 * pixelData.data[j] + .59 * pixelData.data[j + 1] + .11 * pixelData.data[j + 2]) / 256 * (pixelData.data[j + 3] / 255); // Get greyscale value then multiply everything by alpha
 				
-				this.frames[0] += shading[Math.floor(value * value * shading.length)];
+				this.frames[0] += this.chars[Math.floor(value * this.chars.length)];
 				
 				if(j/4 % pixelData.width >= pixelData.width - 1) this.frames[0] += "\n";
 			}
@@ -114,7 +116,7 @@ class Canvas
 
 			for(let j = 0; j < pixelData.data.length; j += 4)
 			{
-				this.frames[0] += chalk.rgb(pixelData.data[j], pixelData.data[j + 1], pixelData.data[j + 2])("█"); // █
+				this.frames[0] += chalk.rgb(pixelData.data[j], pixelData.data[j + 1], pixelData.data[j + 2])(this.chars[0]);
 
 				if(j/4 % pixelData.width >= pixelData.width - 1) this.frames[0] += "\n";
 			}
@@ -153,10 +155,10 @@ prompt.get(
 		},
 		{
 			name: "color",
-			description: "Wether color should be used (y/n) (Not recommended with a large width)",
+			description: "Wether color should be used (n/char/pixel)",
 			default: "n",
 			allowEmpty: false,
-			pattern: /[yYnN]/
+			pattern: /[nN]|(char)|(pixel)/
 		},
 		{
 			name: "audio",
@@ -193,7 +195,10 @@ prompt.get(
 		let videoWidth = parseFloat(result["width"] as string);
 		
 		const isPlayingAudio = /[yY]/.test(result["audio"] as string);
-		const isUsingColor = /[yY]/.test(result["color"] as string);
+		
+		// pixel -> 2, char -> 1, no/other -> 0
+		const colorUsed =
+			(/(pixel)/.test(result["color"] as string) ? "pixel" : (/(char)/.test(result["color"] as string) ? "char" : "no"));
 		
 		let ffmpegMetadata = spawn('ffmpeg', ['-i', videoPath]);
 		let videoMetadata = '';
@@ -249,6 +254,9 @@ prompt.get(
 					videoHeight = videoHeight * ((videoWidth / videoHeight) / (width / height))
 				}
 				
+				videoWidth = Math.floor(videoWidth);
+				videoHeight = Math.floor(videoHeight);
+				
 				fsExtra.emptyDirSync(`${__dirname}/ResizedFrames`);
 				
 				await new Promise(
@@ -265,18 +273,47 @@ prompt.get(
 				
 				await sleep(1000); //Wait for ffmpeg to warm up
 				
-				let canvas: Canvas = new Canvas();
+				let canvas: Canvas;
 				
-				if(isUsingColor) canvas.extractFramesColor(ffmpeg);
-				else canvas.extractFrames(ffmpeg);
+				switch(colorUsed)
+				{
+					default:
+					case "no":
+						canvas = new Canvas(" .:-~=+*/#%@".split(""));
+						canvas.extractFrames(ffmpeg);
+						break;
+					case "char":
+						canvas = new Canvas(["@"]);
+						canvas.extractFramesColor(ffmpeg);
+						break;
+					case "pixel":
+						canvas = new Canvas(["█"]);
+						canvas.extractFramesColor(ffmpeg);
+						break;
+				}
 				
-				let firstFrame: PixelData = await getPixels(`${__dirname}/ResizedFrames/out-1.png`);
-
-				console.log(`Playing ${video} in ${firstFrame.width}x${firstFrame.height * 2} at ${fps} FPS !`);
+				console.log(`Playing ${video} in ${videoWidth}x${videoHeight * 2} and ${colorUsed} color mode at ${fps} FPS !`);
 				
-				await sleep(2000); //Wait for processing to warm up
+				let frame = console.draft("");
+				let startupAnimation = "\n";
 				
-				let frame = console.draft(canvas.popFrame());
+				let step = Math.floor((videoHeight*videoWidth) / 200);
+				
+				// Nice animation while processing the first frames
+				for(let i = 0; i < videoHeight; i++)
+				{
+					for(let j = 0; j < videoWidth; j++)
+					{
+						startupAnimation += canvas.chars[canvas.chars.length-1];
+						frame(startupAnimation);
+						
+						if(j % step == 0) await sleep(3);
+					}
+					
+					startupAnimation += "\n";
+				}
+				
+				await sleep(1000); //Wait a little bit
 				
 				// Play audio
 				if(isPlayingAudio) audioPlayer.play(`${__dirname}/ResizedFrames/audio.mp3`,
@@ -288,37 +325,44 @@ prompt.get(
 							
 							process.exit(1);
 						}
+						
+						return;
 					}
 				);
 				
+				let start = Date.now();
 				let index = 0;
-				let lastUpdate = Date.now();
-				
+
 				const updateDelay = 1000 / fps;
 				
-				while(true)
+				async function playVideo()
 				{
 					if(canvas.index <= 0 && canvas.finished)
 					{
 						console.log(`\nFinished playing ${video}!`);
+						
+						process.exitCode = 0;
+						
+						return;
+					}
+					
+					index = (Date.now() - start) / updateDelay;
+					
+					for(let i = 1; i < index; i++)
+					{
+						let currentFrame = canvas.popFrame();
 
-						process.exit(0);
+						if(currentFrame == undefined) await sleep(updateDelay);
+						else frame("\n" + currentFrame);
+						
+						start += updateDelay;
 					}
 					
-					if(Date.now() - lastUpdate < updateDelay)
-					{
-						await sleep(updateDelay - (Date.now() - lastUpdate));
-					}
 					
-					lastUpdate = Date.now();
-					
-					let currentFrame = canvas.popFrame();
-					
-					if(currentFrame != undefined)
-					{
-						frame("\n" + currentFrame);
-					}
+					setImmediate(playVideo);
 				}
+				
+				playVideo();
 			}
 		);
 	}
