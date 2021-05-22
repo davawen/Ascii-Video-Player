@@ -1,135 +1,22 @@
-import * as getPixels from "image-pixels";
 import * as fs from "fs";
 import * as fsExtra from "fs-extra";
 
 import { spawn, ChildProcessWithoutNullStreams } from 'child_process';
 
+import { Instance as Chalk } from "chalk";
 import * as prompt from 'prompt';
 import * as DraftLog from 'draftlog';
-import { Instance as Chalk } from "chalk";
 
 import * as playSound from 'play-sound';
 
 //#region Set import configs
-const chalk = new Chalk( { level: 3 } );
+
+const chalk = new Chalk({ level: 3 });
 
 (prompt as any).colors = false;
 (prompt as any).message = "";
 
 DraftLog.into(console).addLineListener(process.stdin);
-
-//#endregion
-
-type PixelData = { data: Uint8Array, width: number, height: number; };
-
-class Canvas
-{
-	private frames: string[];
-
-	index: number;
-	frameIndex: number;
-	finished: boolean;
-	chars: string[];
-	
-	constructor(chars: string[])
-	{
-		this.frameIndex = 0;
-		this.index = 0;
-		this.frames = [];
-		this.finished = false;
-		
-		this.chars = chars;
-	}
-	
-	popFrame(): string
-	{
-		this.index--;
-		
-		return this.frames.pop();
-	}
-	
-	async extractFrames(ffmpegProcess: ChildProcessWithoutNullStreams): Promise<void>
-	{
-		for(let i = 9; i >= 0; i--) //Process ten frames at a time
-		{
-			this.frames.unshift("");
-			
-			let imagePath = `${__dirname}/ResizedFrames/out-${this.frameIndex + 1}.png`;
-
-			while(!fs.existsSync(imagePath))
-			{
-				if(ffmpegProcess.killed) //If reached the end of video and file doesn't exists
-				{
-					this.finished = true;
-					return;
-				}
-
-				await sleep(500); //Else wait for ffmpeg to catch up
-			}
-
-			let pixelData: PixelData = await getPixels(imagePath);
-
-			this.index++;
-			this.frameIndex++;
-
-			for(let j = 0; j < pixelData.data.length; j += 4)
-			{
-				let value = (.3 * pixelData.data[j] + .59 * pixelData.data[j + 1] + .11 * pixelData.data[j + 2]) / 256 * (pixelData.data[j + 3] / 255); // Get greyscale value then multiply everything by alpha
-				
-				this.frames[0] += this.chars[Math.floor(value * this.chars.length)];
-				
-				if(j/4 % pixelData.width >= pixelData.width - 1) this.frames[0] += "\n";
-			}
-		}
-		
-		while(this.index >= 500) // Don't hold a lot of frames in memory
-		{
-			await sleep(300);
-		}
-		
-		this.extractFrames(ffmpegProcess);
-	}
-	
-	async extractFramesColor(ffmpegProcess: ChildProcessWithoutNullStreams): Promise<void>
-	{
-		for(let i = 9; i >= 0; i--) //Process ten frames at a time
-		{
-			this.frames.unshift("");
-			
-			let imagePath = `${__dirname}/ResizedFrames/out-${this.frameIndex + 1}.png`;
-
-			while(!fs.existsSync(imagePath))
-			{
-				if(ffmpegProcess.killed) //If reached the end of video and file doesn't exists
-				{
-					this.finished = true;
-					return;
-				}
-
-				await sleep(500); //Else wait for ffmpeg to catch up
-			}
-
-			let pixelData: PixelData = await getPixels(imagePath);
-
-			this.index++;
-			this.frameIndex++;
-
-			for(let j = 0; j < pixelData.data.length; j += 4)
-			{
-				this.frames[0] += chalk.rgb(pixelData.data[j], pixelData.data[j + 1], pixelData.data[j + 2])(this.chars[0]);
-
-				if(j/4 % pixelData.width >= pixelData.width - 1) this.frames[0] += "\n";
-			}
-		}
-
-		while(this.index >= 500) // Don't hold a lot of frames in memory
-		{
-			await sleep(500);
-		}
-
-		this.extractFramesColor(ffmpegProcess);
-	}
-}
 
 const audioPlayer = playSound(
 	{
@@ -137,10 +24,10 @@ const audioPlayer = playSound(
 	}
 );
 
-async function sleep(time: number)
-{
-	return new Promise(resolve => setTimeout(resolve, time));
-}
+//#endregion
+
+import { sleep } from "./logic"
+import { Canvas } from "./canvas"
 
 prompt.start();
 
@@ -275,22 +162,37 @@ prompt.get(
 				
 				let canvas: Canvas;
 				
+				let chars: string[] = [];
 				switch(colorUsed)
 				{
 					default:
 					case "no":
-						canvas = new Canvas(" .:-~=+*/#%@".split(""));
-						canvas.extractFrames(ffmpeg);
+						chars = " .',:-~=|({[&#".split("");
+					
+						canvas = new Canvas(
+							(r, g, b, a) =>
+							{
+								let value = (.3*r + .59*g + .11*b) / 256 * (a / 255); // Get greyscale value then multiply everything by alpha
+								
+								return chars[Math.floor(value * chars.length)];
+							}
+						);
 						break;
 					case "char":
-						canvas = new Canvas(["@"]);
-						canvas.extractFramesColor(ffmpeg);
-						break;
+						chars = ["#"];
 					case "pixel":
-						canvas = new Canvas(["█"]);
-						canvas.extractFramesColor(ffmpeg);
+						chars = chars.length == 0 ? ["█"] : chars;
+					
+						canvas = new Canvas(
+							(r, g, b, a) =>
+							{
+								return chalk.rgb(r, g, b)(chars[0]);
+							}
+						);
 						break;
 				}
+				
+				canvas.extractFrames(ffmpeg);
 				
 				console.log(`Playing ${video} in ${videoWidth}x${videoHeight * 2} and ${colorUsed} color mode at ${fps} FPS !`);
 				
@@ -304,7 +206,7 @@ prompt.get(
 				{
 					for(let j = 0; j < videoWidth; j++)
 					{
-						startupAnimation += canvas.chars[canvas.chars.length-1];
+						startupAnimation += chars[chars.length-1];
 						frame(startupAnimation);
 						
 						if(j % step == 0) await sleep(3);
