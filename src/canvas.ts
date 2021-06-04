@@ -10,7 +10,10 @@ type PixelData = { data: Uint8Array, width: number, height: number; };
 export class Canvas
 {
 	private frames: string[];
-
+	
+	rawFrames: PixelData[];
+	private finishedRawFrames: boolean;
+	
 	index: number;
 	frameIndex: number;
 	finished: boolean;
@@ -22,8 +25,11 @@ export class Canvas
 		this.frameIndex = 0;
 		this.index = 0;
 		this.frames = [];
+		this.rawFrames = [];
+		
 		this.finished = false;
-
+		this.finishedRawFrames = false;
+		
 		this.charFunction = charFunction;
 	}
 
@@ -33,28 +39,60 @@ export class Canvas
 
 		return this.frames.pop();
 	}
-
-	async extractFrames(ffmpegProcess: ChildProcessWithoutNullStreams): Promise<void>
+	
+	async readFrames(ffmpegProcess: ChildProcessWithoutNullStreams, index: number = 0): Promise<void>
+	{
+		for(let i = 0; i < 10; i++)
+		{
+			let imagePath = `${__dirname}/ResizedFrames/out-${index + 1}.png`;
+			
+			if(!fs.existsSync(imagePath))
+			{
+				if(ffmpegProcess.killed)
+				{
+					this.finishedRawFrames = true;
+					return;
+				}
+				
+				await sleep(50);
+				break;
+			}
+			
+			try
+			{
+				this.rawFrames.unshift(await getPixels(imagePath));
+			}
+			catch(e)
+			{
+				break;
+			}
+			
+			index++;
+		}
+		
+		this.readFrames(ffmpegProcess, index);
+	}
+	
+	async processFrames(): Promise<void>
 	{
 		for(let i = 9; i >= 0; i--) //Process ten frames at a time
 		{
-			this.frames.unshift("");
-
-			let imagePath = `${__dirname}/ResizedFrames/out-${this.frameIndex + 1}.png`;
-
-			while(!fs.existsSync(imagePath))
+			if(this.rawFrames.length === 0 && this.finishedRawFrames)
 			{
-				if(ffmpegProcess.killed) //If reached the end of video and file doesn't exists
-				{
-					this.finished = true;
-					return;
-				}
-
-				await sleep(500); //Else wait for ffmpeg to catch up
+				this.finished = true;
+				return;
 			}
-
-			let pixelData: PixelData = await getPixels(imagePath);
-
+			
+			this.frames.unshift("");
+			
+			const pixelData = this.rawFrames.pop();
+			
+			if(pixelData === undefined)
+			{
+				await sleep(30);
+				continue;
+			}
+			
 			this.index++;
 			this.frameIndex++;
 
@@ -66,11 +104,11 @@ export class Canvas
 			}
 		}
 
-		while(this.index >= 500) // Don't hold a lot of frames in memory
+		while(this.index >= 700) // Don't hold a lot of frames in memory
 		{
-			await sleep(300);
+			await sleep(200);
 		}
 
-		this.extractFrames(ffmpegProcess);
+		this.processFrames();
 	}
 }
