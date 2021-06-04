@@ -9,8 +9,6 @@
   "author": "davawen",
   "license": "ISC",
   "dependencies": {
-    "chalk": "^4.1.1",
-    "draftlog": "^1.0.13",
     "fs-extra": "^10.0.0",
     "image-pixels": "^2.2.2",
     "play-sound": "^1.1.3",
