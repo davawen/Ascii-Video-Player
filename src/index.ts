@@ -3,20 +3,14 @@ import * as fsExtra from "fs-extra";
 
 import { spawn, ChildProcessWithoutNullStreams } from 'child_process';
 
-import { Instance as Chalk } from "chalk";
 import * as prompt from 'prompt';
-import * as DraftLog from 'draftlog';
 
 import * as playSound from 'play-sound';
 
 //#region Set import configs
 
-const chalk = new Chalk({ level: 3 });
-
 (prompt as any).colors = false;
 (prompt as any).message = "";
-
-DraftLog.into(console).addLineListener(process.stdin);
 
 const audioPlayer = playSound(
 	{
@@ -154,11 +148,9 @@ prompt.get(
 				);
 				
 				//Reduce aspect ratio by 2
-				let ffmpeg = spawn("ffmpeg", ['-i', videoPath, '-vf', `scale=${videoWidth}:${videoHeight},unsharp`, "-sws_flags", "area",`${__dirname}/ResizedFrames/out-%d.png`]);
+				let ffmpeg = spawn("ffmpeg", ['-i', videoPath, '-vf', `scale=${videoWidth}:${videoHeight}`, `${__dirname}/ResizedFrames/out-%d.png`]);
 				
-				process.stdout.write("\u001b[2J\u001b[0;0H"); //Clear terminal
-				
-				await sleep(1000); //Wait for ffmpeg to warm up
+				process.stdout.write("\u001b[2J\u001b[1;1H"); //Clear terminal
 				
 				let canvas: Canvas;
 				
@@ -182,57 +174,84 @@ prompt.get(
 						);
 						break;
 					case "char":
-						chars = ["@"];
+						chars = " .',:-~=|({[&#@".split("");
+						
+						canvas = new Canvas(
+							(r, g, b) =>
+							{
+								let value = (.3 * r + .59 * g + .11 * b) / 256;
+								
+								r /= 255;
+								g /= 255;
+								b /= 255;
+
+								let max = Math.max(r, g, b), min = Math.min(r, g, b);
+								let h, s;
+
+								let d = max - min;
+								s = max == 0 ? 0 : d / max;
+
+								if(max == min)
+								{
+									h = 0; // achromatic
+								}
+								else
+								{
+									switch(max)
+									{
+										case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+										case g: h = (b - r) / d + 2; break;
+										case b: h = (r - g) / d + 4; break;
+									}
+								}
+								
+								let i = Math.floor(h);
+								let f = h - i;
+								let p = 1 * (1 - s);
+								let q = 1 * (1 - f * s);
+								let t = 1 * (1 - (1 - f) * s);
+								
+								switch(i)
+								{
+									case 0: r = 1, g = t, b = p; break;
+									case 1: r = q, g = 1, b = p; break;
+									case 2: r = p, g = 1, b = t; break;
+									case 3: r = p, g = q, b = 1; break;
+									case 4: r = t, g = p, b = 1; break;
+									case 5: r = 1, g = p, b = q; break;
+								}
+								
+								r = Math.floor(r * 255);
+								g = Math.floor(g * 255);
+								b = Math.floor(b * 255);
+								
+								return `\u001b[38;2;${r};${g};${b}m${chars[Math.floor(value * chars.length)]}`;
+							}
+						)
+						break;
 					case "pixel":
-						chars = chars.length == 0 ? ["█"] : chars;
+						chars = ["█"];
 					
 						canvas = new Canvas(
-							(r, g, b, a) =>
+							(r, g, b) =>
 							{
-								return chalk.rgb(r, g, b)(chars[0]);
+								return `\u001b[38;2;${r};${g};${b}m${chars[0]}`;
 							}
 						);
 						break;
 				}
 				
-				canvas.extractFrames(ffmpeg);
+				await sleep(500); //Wait for ffmpeg to warm up
 				
-				console.log(`Playing ${video} in ${videoWidth}x${videoHeight * 2} and ${colorUsed} color mode at ${fps} FPS !`);
+				canvas.readFrames(ffmpeg);
 				
-				let frame = console.draft("");
-				// let startupAnimation = "\n";
+				console.log(`Playing ${video} in ${videoWidth}x${videoHeight * 2} at ${fps} FPS !`);
 				
-				// let step = Math.floor((videoHeight*videoWidth) / 5);
+				await sleep(2500); // Wait for disk reading to warm up
 				
-				// Nice animation while processing the first frames
-				// for(let i = 0; i < videoWidth*videoHeight; i += step)
-				// {
-				// 	if((i - step) % videoWidth > i % videoWidth)
-				// 	{
-				// 		startupAnimation += chars[chars.length-1].repeat( videoWidth - (i - step) ) + "\n" + chars[chars.length-1].repeat( i - videoWidth );
-				// 	}
-				// 	else
-				// 	{
-				// 		startupAnimation += chars[chars.length-1].repeat(step);
-				// 	}
-					
-				// 	await sleep(10);
-				// }
+				canvas.processFrames(); //Start processing frames
 				
-				// for(let i = 0; i < videoHeight; i++)
-				// {
-				// 	for(let j = 0; j < videoWidth; j++)
-				// 	{
-				// 		startupAnimation += chars[chars.length-1];
-				// 		frame(startupAnimation);
-						
-				// 		if((j + i*videoHeight) % step == 0) await sleep(5);
-				// 	}
-					
-				// 	startupAnimation += "\n";
-				// }
-				
-				await sleep(2000); //Wait a little bit
+				await sleep(1000); //Wait a little bit
 				
 				// Play audio
 				if(isPlayingAudio) audioPlayer.play(`${__dirname}/ResizedFrames/audio.mp3`,
@@ -258,7 +277,7 @@ prompt.get(
 				{
 					if(canvas.index <= 0 && canvas.finished)
 					{
-						console.log(`\nFinished playing ${video}!`);
+						process.stdout.write(`\u001b[1000B\nFinished playing ${video}!`);
 						
 						process.exitCode = 0;
 						
@@ -271,7 +290,7 @@ prompt.get(
 					{
 						let currentFrame = canvas.popFrame();
 						
-						if(i >= index-1 && currentFrame != undefined) frame("\n" + currentFrame);
+						if(i >= index - 1 && currentFrame != undefined) process.stdout.write(`\u001b[3;1H${currentFrame}`);
 						
 						start += updateDelay;
 					}
