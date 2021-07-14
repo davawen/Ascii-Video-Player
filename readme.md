@@ -19,7 +19,7 @@ If for whatever reasons you want to use it, follow these steps :
 	- Finally, open a command prompt in the project directory and first run `npm i` to install all the dependencies, then `tsc` to compile the project.
 	- Everything is now ready, simply type `node .` to launch it.
 - Linux:
-	- Install ffmpeg, mplayer, nodejs and npm with `apt` or whatever packet manager you're using.
+	- Install ffmpeg, mplayer, nodejs and npm with your given packet manager you're using.
 	- Install the typescript compiler with `npm i -g typescript`.
 	- Clone or download the repo.
 	- Install the dependencies with `npm i` and then run `tsc` to compile it.
